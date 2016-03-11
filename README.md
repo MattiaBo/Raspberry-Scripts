@@ -1,3 +1,3 @@
-# raspy_scripts
+# Raspberry-Scripts
 
 Scripts for Raspberry Pi
