@@ -1,0 +1,327 @@
+# Flexget configuration file V10 for Raspberry Pi NAS
+# Download TV Series in HD and SD from different sources
+
+#Use secrets plugin to store credentials
+secrets: secrets.yml
+
+templates:
+  global:
+    email:
+      from: '{{ secrets.email.sender }}'
+      to: '{{ secrets.email.receiver }}'
+      smtp_host: smtp.gmail.com
+      smtp_port: 587
+      smtp_username: '{{ secrets.email.username }}'
+      smtp_password: '{{ secrets.email.password }}'
+      smtp_tls: yes
+    magnets: no
+    torrent_alive: 1 #number of seeders needed to accept
+    domain_delay:
+      bt-chat.com: 5 seconds
+      torrentz.eu: 5 seconds
+      www.torrentleech.org: 10 seconds
+      rss.torrentleech.org: 10 minutes
+    retry_failed:
+      retry_time: 1 hour
+      retry_time_multiplier: 2
+      max_retries: 5
+    verify_ssl_certificates: no
+    # Make sure there are at least 10 GB free on disk
+    free_space:
+      path: /media/556a9187-fc9c-4980-a54a-2767818ee6fa
+      space: 10000
+    regexp:
+      reject:
+        - FASTSUB #French
+        - VOSTFR #French
+        - Subtitulado #Spanish
+        - Special-Wicked
+        - Temporada
+        - SPANiSH
+        - hevc
+        - x265
+        - ASAP
+        - FRENCH
+    content_filter:
+      reject:
+        - '*.rar'
+        - '*.zip'
+        - 'password.txt'
+    # Prevent some messages to be logged - see https://github.com/tarzasai/.flexget/tree/master/plugins
+    log_filter:
+      content_size:
+        - too big, rejecting
+        - too small, rejecting
+      crossmatch:
+        - filesystem did not return anything
+      guessit.guess:
+        - duplicate properties
+        - both guesses to be merged
+      manager:
+        - Writing crash report to
+      move:
+        - left because it exceeds safety value
+        - does not exists (anymore)
+      parser_internal:
+        - appears to be an episode pack
+      requests.packages.urllib3.connectionpool:
+        - error(10060
+        - feed
+        - torlock
+        - getaddrinfo failed
+        - ReadTimeoutError
+        - after connection broken
+      series:
+        - releasing quality restriction
+        - appears to be an episode pack
+      task:
+        - Plugin content_size has requested task to be ran again
+        - Rerunning the task in case better resolution
+        - Unhandled error in plugin from_transmission
+        - Unhandled error in plugin clean_transmission
+      torrentz:
+        - Too Many Requests
+      uoccin_process:
+        - changes in C
+      urlrewriter:
+        - URL rewritten to
+      transmissionrpc:
+        - Expecting
+        - Request
+        - HTTP data
+      transmission:
+        - status
+
+  tv-global:
+    exists_series:
+      - '{{ secrets.dirs.TV_r1 }}' 
+      - '{{ secrets.dirs.TV_r3 }}' 
+      - '{{ secrets.dirs.trans_down }}' 
+      - '{{ secrets.dirs.trans_incomp }}' 
+#    thetvdb_lookup: yes
+#    trakt_lookup: yes
+#    require_field: series_id
+    pushbullet:
+      apikey: '{{ secrets.pushbullet.apikey }}'
+      title: "[Flexget] {{task}}"
+      body: "{{ tvdb_series_name|default(series_name) }} - {{ series_id }}{% if tvdb_ep_name|default(False) %} - {{ tvdb_ep_name }}{% endif %}\n{{ quality }}"
+    set:
+      main_file_only: yes
+      skip_files:
+        - '*.nfo'
+        - '*.sfv'
+        - '*[sS]ample*'
+        - '*.txt'
+    transmission:
+      host: localhost
+      port: 9091
+      username: '{{ secrets.transmission.username }}'
+      password: '{{ secrets.transmission.password }}'
+      addpaused: no
+      path: '{{ secrets.dirs.series }}'
+    clean_transmission:
+      host: localhost
+      port: 9091
+      username: '{{ secrets.transmission.username }}'
+      password: '{{ secrets.transmission.password }}'
+      finished_for: 30 days
+
+  tv_info:
+    plugin_priority:
+      manipulate: 255
+    metainfo_series: yes
+    thetvdb_lookup: yes
+#    trakt_lookup: yes
+#    require_field: [series_id]
+    log_filter:
+      api_tvdb:
+        - using cached data
+        - not get update information from
+      manipulate:
+        - tvinfo_title
+      parser_internal:
+        - cannot find a(n) `ep` style identifier
+        - cannot find any series numbering
+    # Some titles need little corrections to find matches on metainfo sites.
+    manipulate:
+      - title:
+          replace:
+            regexp: '^\[[^\]]*\][^a-z0-9]*'
+            format: ''
+      - title:
+          replace:
+            regexp: '^{[^\]]*}[^a-z0-9]*'
+            format: ''
+      - title:
+          replace:
+            regexp: '^\([^\]]*\)[^a-z0-9]*'
+            format: ''
+      # Original title backup
+      - tvinfo_title:
+          from: title
+      # Now the modifications
+      - title:
+          replace:
+            regexp: '.*(marvel|marvels|marvel.s)?.agents.of.(s.h.i.e.l.d.|shield)[\b-.]*'
+            format: 'marvels_agents_of_shield.'
+      - title:
+          replace:
+            regexp: '^[^a-z0-9]*house.of.cards.(us|\(us\))?[^a-z0-9]*'
+            format: 'House.of.Cards.(US).'
+      - title:
+          replace:
+            regexp: '^[^a-z0-9]*aquarius.(us|\(us\))?[^a-z0-9]*'
+            format: 'Aquarius.2015.'
+
+tasks:
+  tv-eng:
+    priority: 10
+    template:
+      - tv_info
+      - tv-global
+    inputs:
+      - rss: http://showrss.info/user/18396.rss?magnets=false&namespaces=true&name=clean&quality=null&re=null
+      - rss: https://eztv.ag/ezrss.xml
+      - rss: http://kickasstorrents.video/tv/?rss=1
+      - rss: http://www.torlock.com/television/rss.xml
+    log_filter:
+      inputs:
+        - Unable to download the RSS for task
+        - invalid RSS content
+        - rss did not return
+      rss:
+        - I have saved the invalid content
+        - like error page
+        - login page
+    content_size:
+      max: 2450
+      min: 150
+      strict: no
+    sequence:
+      - configure_series:
+          settings:
+            target: 720p+
+            quality: 720p
+            upgrade: yes
+            propers: 20 hours
+            timeframe: 4 hours
+#            content_size:
+#              max: 2450
+#              mix: 450
+#              strict: no
+          from:
+            trakt_list:
+              username: '{{ secrets.trakt.username }}'
+              account: '{{ secrets.trakt.account }}'
+              list: tv-eng-720p
+              type: shows
+              strip_dates: yes
+      - configure_series:
+          settings:
+            quality: <720p
+            upgrade: yes
+            propers: 20 hours
+            timeframe: 4 hours
+#            content_size:
+#              max: 1150
+#              mix: 150
+#              strict: no
+          from:
+            trakt_list:
+              username: '{{ secrets.trakt.username }}'
+              account: '{{ secrets.trakt.account }}'
+              list: tv-eng-sd
+              type: shows
+              strip_dates: yes
+
+  tv-ita:
+    priority: 20
+    template:
+      - tv_info
+      - tv-global
+    inputs:
+      - rss: http://www.tntvillage.scambioetico.org/rss.php?c=29&p=500
+    log_filter:
+      inputs:
+        - Unable to download the RSS for task
+        - invalid RSS content
+        - rss did not return
+      rss:
+        - I have saved the invalid content
+        - like error page
+        - login page    
+    content_size:
+      max: 12050
+      min: 150
+      strict: no
+    sequence:
+      - configure_series:
+          settings:
+            target: 1080p
+            quality: 1080p
+            upgrade: yes
+            propers: 20 hours
+            timeframe: 4 hours
+          from:
+            trakt_list:
+              username: '{{ secrets.trakt.username }}'
+              account: '{{ secrets.trakt.account }}'
+              list: tv-ita-1080p
+              type: shows
+              strip_dates: yes
+      - configure_series:
+          settings:
+            target: 720p+
+            quality: 720p
+            upgrade: yes
+            propers: 20 hours
+            timeframe: 4 hours
+          from:
+            trakt_list:
+              username: '{{ secrets.trakt.username }}'
+              account: '{{ secrets.trakt.account }}'
+              list: tv-ita-720p
+              type: shows
+              strip_dates: yes
+      - configure_series:
+          settings:
+            quality: <720p
+            upgrade: yes
+            propers: 20 hours
+            timeframe: 4 hours
+          from:
+            trakt_list:
+              username: '{{ secrets.trakt.username }}'
+              account: '{{ secrets.trakt.account }}'
+              list: tv-ita-sd
+              type: shows
+              strip_dates: yes
+
+  tv-local:
+    priority: 30
+    template:
+      - tv_info
+      - tv-global
+    disable:
+      - seen
+      - seen_info_hash
+      - retry_failed
+      - configure_series
+      - trakt_list
+      - inputs
+      - exists_series
+      - regexp
+      - content_size
+      - content_filter
+      - torrent_alive
+    filesystem:
+      path: '/media/556a9187-fc9c-4980-a54a-2767818ee6fa/btsync/Torrent'
+      recursive: yes
+      retrieve: files
+      regexp: '.*\.torrent$'
+    no_entries_ok: yes
+    verify_ssl_certificates: no
+    exec:
+      on_output:
+        for_accepted: rm "{{location}}"
+    accept_all: yes
